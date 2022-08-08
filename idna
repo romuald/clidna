@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""
+"idna", encodes or decodes IDNA names from arguments or stdin
+
+Usage(s):
+
+  idna xn--caf-dma.com  (will output café.com)
+  idna café.com  (will output xn--caf-dma.com)
+
+  echo café.com | idna  (will output xn--caf-dma.com)
+  echo xn--caf-dma.com | idna  (will output café.com)
+
+Defaults to IDNA2008, with a fallback on IDNA2003 (used for emojis)
+
+"""
+
+import sys
+import select
+
+try:
+    import idna
+except ImportError:
+    print("Warning: idna module unavailable", file=sys.stderr)
+    idna = None
+
+
+def decode(name: str) -> str:
+    """
+    Decode an IDNA encoded name to an unicode string
+
+    TLDR; xn--xxx -> café
+
+    """
+    ret = None
+
+    # Try IDNA2008 if available (and valid)
+    if idna is not None:
+        try:
+            ret = idna.decode(name)
+        except idna.IDNAError:
+            pass
+
+    # Fallback on IDNA2003
+    if ret is None:
+        ret = name.encode().decode("idna")
+
+    return ret
+
+
+def encode(name: str) -> str:
+    """
+    Encode an unicode string to its IDNA version
+
+    TLDR; café -> xn--xxx
+
+    """
+
+    ret = None
+    # Try IDNA2008 if available (and valid)
+    if idna is not None:
+        try:
+            ret = idna.encode(name).decode()
+        except idna.IDNAError:
+            pass
+
+    if ret is None:
+        ret = name.encode("idna").decode()
+
+    return ret
+
+
+def auto(name: str) -> str:
+    """
+    Decode or encode depending on name begining with xn-- or not
+
+    """
+    if name.startswith("xn--"):
+        return decode(name)
+    else:
+        return encode(name)
+
+
+def main():
+    args = sys.argv[1:]
+    if args:  # args -> convert them
+        for arg in args:
+            print(auto(arg))
+        return
+
+    # No args, read from stdin
+    # print helpful message if nothing is coming from stdin
+    (ready, _, _) = select.select([sys.stdin], [], [], 0.01)
+    if not ready:
+        print(
+            "No arguments given, reading for stdin… (end with EOF)",
+            file=sys.stderr,
+        )
+
+    for line in sys.stdin:
+        for name in line.strip().split(" "):
+            print(auto(name))
+
+
+if __name__ == "__main__":
+    main()
